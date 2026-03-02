@@ -1,4 +1,4 @@
-# Enterprise SOC Homelab: Active Directory Security Monitoring
+# Design and Evaluation of a Multi-Layered Enterprise SOC Homelab for Active Directory Threat Detection
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-VirtualBox-blue)]()
@@ -20,7 +20,7 @@ and incident response capabilities.
 - **Attack Platform:** Kali Linux 2024
 
 ## 🎓 Skills Demonstrated
-- Active Directory administration & security
+- Active Directory administration, role, po & security
 - SIEM rule creation and log analysis
 - Network intrusion detection (Suricata)
 - Endpoint detection and response (Sysmon + Wazuh)
