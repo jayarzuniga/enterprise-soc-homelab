@@ -583,3 +583,743 @@ lab.local
 ├─ LAB Users
 └─ Users
 ```
+
+# 8. Creating Organizational Units & Users
+
+## 8.1 Create Domain Users
+
+Now that Active Directory is configured, we'll create user accounts to simulate an enterprise environment. These users will be used for testing authentication, group policy, and attack scenarios.
+
+**Step 1 — Open Active Directory Users and Computers:**
+
+1. **Server Manager → Tools → Active Directory Users and Computers**
+2. Expand `lab.local` in the left tree
+3. Navigate to the `LAB Users` OU created earlier
+
+---
+
+**Step 2 — Create Standard User Account:**
+
+1. Right-click `LAB Users` → **New → User**
+2. Fill in the form:
+
+   | Field                              | Value     |
+   | ---------------------------------- | --------- |
+   | First name                         | `John`    |
+   | Last name                          | `Doe`     |
+   | User logon name                    | `jdoe`    |
+   | User logon name (pre-Windows 2000) | `LAB\jdoe`|
+
+3. Click **Next**
+4. Configure password:
+
+   | Setting                                  | Value              |
+   | ---------------------------------------- | ------------------ |
+   | Password                                 | `ComplexPass123!`  |
+   | Confirm password                         | `ComplexPass123!`  |
+   | User must change password at next logon  | ☐ Unchecked        |
+   | Password never expires                   | ✅ Checked         |
+
+5. Click **Next** → Review summary → Click **Finish**
+
+> ⚠️ **Note:** In production, you would **never** disable password expiration or skip password change requirements. We do this in the lab for convenience during testing.
+
+---
+
+**Step 3 — Create Additional Users** *(all in `LAB Users` OU, password: `ComplexPass123!`)*:
+
+| Full Name      | Username     | Purpose                                  |
+| -------------- | ------------ | ---------------------------------------- |
+| Jane Smith     | `jsmith`     | Standard user — IT Department            |
+| Bob Johnson    | `bjohnson`   | Standard user — HR Department            |
+| Alice Williams | `awilliams`  | Standard user — Finance                  |
+| SQL Service    | `svc_sql`    | Service account *(for Kerberoasting tests)* |
+
+---
+
+**Step 4 — Create Administrator Account** *(in `LAB Admins` OU)*:
+
+1. Right-click `LAB Admins` → **New → User**
+2. Configure:
+
+   | Field             | Value           |
+   | ----------------- | --------------- |
+   | First name        | `Admin`         |
+   | Last name         | `User`          |
+   | User logon name   | `labadmin`      |
+   | Password          | `AdminPass2026!`|
+   | Password never expires | ✅ Checked |
+   | Must change at next logon | ☐ Unchecked |
+
+3. Click **Next** → **Finish**
+
+---
+
+## 8.2 Create Security Groups
+
+Security groups control access to resources. We'll create groups for different departments.
+
+**Step 1 — Create IT Admins Group:**
+
+1. Navigate to `LAB Groups` OU
+2. Right-click → **New → Group**
+3. Configure:
+
+   | Field        | Value       |
+   | ------------ | ----------- |
+   | Group name   | `IT Admins` |
+   | Group scope  | Global      |
+   | Group type   | Security    |
+
+4. Click **OK**
+
+---
+
+**Step 2 — Create Additional Groups** *(all in `LAB Groups`, Global Security type)*:
+
+| Group Name           | Purpose                     |
+| -------------------- | --------------------------- |
+| `HR Department`      | Human resources users       |
+| `Finance Department` | Finance users               |
+| `IT Department`      | IT users                    |
+| `Remote Desktop Users` | RDP access testing        |
+
+---
+
+**Step 3 — Add Users to Groups:**
+
+1. Double-click the `IT Admins` group → go to **Members** tab
+2. Click **Add...** → type `labadmin` → click **Check Names** → click **OK** twice
+
+Repeat for the following memberships:
+
+| User        | Group(s)                          |
+| ----------- | --------------------------------- |
+| `jsmith`    | `IT Department`                   |
+| `bjohnson`  | `HR Department`                   |
+| `awilliams` | `Finance Department`              |
+| `labadmin`  | `IT Admins`, `IT Department`      |
+
+---
+
+**Step 4 — Make `labadmin` a Domain Admin:**
+
+1. In ADUC, navigate to the **Builtin** container
+2. Double-click **Domain Admins** group → **Members** tab → **Add**
+3. Type `labadmin` → click **Check Names** → **OK** → **OK**
+
+> ⚠️ **Warning:** In a real environment, limit Domain Admin membership strictly. We do this in the lab for testing purposes only.
+
+---
+
+# 9. Group Policy Basics
+
+## 9.1 Understanding Group Policy
+
+Group Policy Objects (GPOs) configure and enforce settings across the domain. They are a primary target for attackers (GPO abuse) and essential for SOC monitoring.
+
+**Common GPO use cases:**
+
+| Category              | Examples                                        |
+| --------------------- | ----------------------------------------------- |
+| Account Security      | Password policies, account lockout              |
+| Audit & Logging       | What events to log (critical for Wazuh)         |
+| Software Management   | Installation, updates, restrictions             |
+| Desktop Configuration | Restrictions, wallpaper, shortcuts              |
+| Security Settings     | Firewall rules, UAC, registry values            |
+
+---
+
+## 9.2 Access Group Policy Management
+
+1. Open **Server Manager → Tools → Group Policy Management**
+2. Expand **Forest: lab.local → Domains → lab.local**
+3. You should see:
+   - `Default Domain Policy` *(pre-configured)*
+   - `Domain Controllers` OU with `Default Domain Controllers Policy`
+
+---
+
+## 9.3 Configure Default Domain Password Policy
+
+**Step 1 — Edit Default Domain Policy:**
+
+1. In Group Policy Management, expand `lab.local`
+2. Right-click **Default Domain Policy** → **Edit**
+3. The *Group Policy Management Editor* opens
+
+**Step 2 — Configure Password Policy:**
+
+Navigate to:
+`Computer Configuration → Policies → Windows Settings → Security Settings → Account Policies → Password Policy`
+
+| Setting                                    | Value      |
+| ------------------------------------------ | ---------- |
+| Enforce password history                   | 5 passwords|
+| Maximum password age                       | 90 days    |
+| Minimum password age                       | 1 day      |
+| Minimum password length                    | 12 characters |
+| Password must meet complexity requirements | Enabled    |
+| Store passwords using reversible encryption| Disabled   |
+
+Double-click each setting to modify it.
+
+**Step 3 — Configure Account Lockout Policy:**
+
+Navigate to:
+`Account Policies → Account Lockout Policy`
+
+| Setting                              | Value       |
+| ------------------------------------ | ----------- |
+| Account lockout duration             | 30 minutes  |
+| Account lockout threshold            | 5 invalid attempts |
+| Reset account lockout counter after  | 30 minutes  |
+
+Close the **Group Policy Management Editor**.
+
+---
+
+## 9.4 Enable Advanced Audit Policies
+
+Advanced audit policies generate the event logs that Wazuh will monitor. This is **critical for detecting attacks**.
+
+**Step 1 — Edit Default Domain Policy:**
+
+Right-click **Default Domain Policy** → **Edit**
+
+**Step 2 — Configure Audit Policies:**
+
+Navigate to:
+`Computer Configuration → Policies → Windows Settings → Security Settings → Advanced Audit Policy Configuration → Audit Policies`
+
+Set each of the following to **Success and Failure**:
+
+| Category             | Policy                              |
+| -------------------- | ----------------------------------- |
+| Account Logon        | Audit Credential Validation         |
+| Account Management   | Audit User Account Management       |
+| Account Management   | Audit Security Group Management     |
+| Logon/Logoff         | Audit Logon                         |
+| Logon/Logoff         | Audit Logoff                        |
+| Logon/Logoff         | Audit Account Lockout               |
+| Object Access        | Audit File Share                    |
+| Policy Change        | Audit Policy Change                 |
+| Privilege Use        | Audit Sensitive Privilege Use       |
+| System               | Audit Security System Extension     |
+
+Close the **Group Policy Management Editor**.
+
+**Step 3 — Force Group Policy Update:**
+
+Open PowerShell as Administrator and run:
+
+```powershell
+gpupdate /force
+```
+
+> This applies the policies immediately instead of waiting for the next automatic update cycle.
+
+# 10. Install Wazuh Agent
+
+## 10.1 Why Wazuh Agent on Domain Controller?
+
+The Wazuh agent monitors the Domain Controller for security events and sends them to the Wazuh Manager for analysis. This is essential for detecting Active Directory attacks.
+
+**Events the Wazuh agent will detect:**
+
+| Category                  | Examples                                              |
+| ------------------------- | ----------------------------------------------------- |
+| Authentication            | Failed login attempts, Kerberos ticket requests       |
+| Account Management        | Account creation/deletion, group membership changes   |
+| Privilege & Policy        | Privilege escalation, Group Policy modifications      |
+| Lateral Movement          | NTLM authentication (Pass-the-Hash)                   |
+| Suspicious Activity       | Malicious PowerShell commands                         |
+
+---
+
+## 10.2 Download Wazuh Agent
+
+On the Domain Controller (`DC01`), open a web browser and download directly:
+
+```
+https://packages.wazuh.com/4.x/windows/wazuh-agent-4.7.5-1.msi
+```
+
+Or visit the official [Wazuh Windows Agent Documentation](https://documentation.wazuh.com) for the latest version.
+
+Save the `.msi` file to your Downloads folder.
+
+---
+
+## 10.3 Install Wazuh Agent
+
+**Step 1 — Run the Installer:**
+
+1. Locate `wazuh-agent-4.7.5-1.msi` in your Downloads folder
+2. Double-click to run the installer
+3. Click **Next** on the welcome screen
+
+**Step 2 — Configure Agent:**
+
+| Setting             | Value            |
+| ------------------- | ---------------- |
+| Wazuh server address| `192.168.3.81`   |
+| Wazuh server port   | `1514` *(default)*|
+| Protocol            | TCP *(default)*  |
+| Agent name          | `DC01`           |
+
+Click **Next**
+
+**Step 3 — Complete Installation:**
+
+1. Click **Install**
+2. Wait for installation to complete *(1–2 minutes)*
+3. Click **Finish**
+
+---
+
+## 10.4 Register Agent with Wazuh Manager
+
+The agent must be authenticated with the Wazuh Manager before it can send logs.
+
+**Step 1 — Open PowerShell as Administrator:**
+
+Start → type `PowerShell` → right-click → **Run as Administrator**
+
+**Step 2 — Navigate to Wazuh directory:**
+
+```powershell
+cd "C:\Program Files (x86)\ossec-agent"
+```
+
+**Step 3 — Register the agent:**
+
+```powershell
+.\agent-auth.exe -m 192.168.3.81
+```
+
+Expected output:
+
+```
+INFO: Connected to enrollment service.
+INFO: Using agent name as: DC01
+INFO: Valid key received.
+```
+
+**Step 4 — Start Wazuh Agent service:**
+
+```powershell
+NET START WazuhSvc
+```
+
+Expected output: `"The Wazuh service was started successfully."`
+
+---
+
+## 10.5 Verify Agent Connection
+
+On the Wazuh Manager (`192.168.3.81`), SSH in and run:
+
+```bash
+sudo /var/ossec/bin/agent_control -lc
+```
+
+You should see `DC01` listed as **Active**:
+
+```
+ID: 002, Name: DC01, IP: 192.168.20.10, Active/Online
+```
+
+> ✅ **DC01 is now sending logs to Wazuh Manager.**
+
+---
+
+# 11. Install & Configure Sysmon
+
+## 11.1 What is Sysmon?
+
+System Monitor (Sysmon) is a Windows system service that logs detailed information about system activity — far beyond what Windows Event Logs capture by default.
+
+**What Sysmon monitors:**
+
+| Category              | Details                                         |
+| --------------------- | ----------------------------------------------- |
+| Process Activity      | Creation, termination, command-line arguments   |
+| Network Connections   | Source/destination IPs and ports                |
+| File System           | File creation and modification                  |
+| Registry              | Registry key changes                            |
+| Driver & Module Load  | Loaded drivers and DLLs                         |
+| DNS Queries           | All DNS lookups made by processes               |
+| Process Access        | Process injection attempts                      |
+| Clipboard             | Clipboard capture events                        |
+
+**Why Sysmon is critical for a SOC lab:**
+- Detects malware execution patterns
+- Tracks lateral movement techniques
+- Identifies credential theft attempts
+- Logs full command-line arguments *(catches malicious scripts)*
+- Provides detailed forensic evidence
+- Integrates with Wazuh for real-time alerting
+
+---
+
+## 11.2 Download Sysmon
+
+Sysmon is part of Microsoft Sysinternals.
+
+**Official download:**
+
+```
+https://download.sysinternals.com/files/Sysmon.zip
+```
+
+Or visit the [Microsoft Sysinternals Sysmon Documentation](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon) for the latest version.
+
+---
+
+## 11.3 Download SwiftOnSecurity Sysmon Configuration
+
+SwiftOnSecurity maintains the industry-standard Sysmon configuration file used by most SOC teams.
+
+**Download link:**
+
+```
+https://github.com/SwiftOnSecurity/sysmon-config
+```
+
+1. Click the **Raw** button on the `sysmonconfig-export.xml` file to download it
+2. Save the file as: `sysmonconfig.xml`
+3. Place it in `C:\Tools\` *(create the folder if needed)*
+
+---
+
+## 11.4 Install Sysmon
+
+**Step 1 — Extract Sysmon:**
+
+1. Extract `Sysmon.zip` to `C:\Tools\Sysmon\`
+2. Verify these files are present: `Sysmon64.exe`, `Sysmon.exe`, `Eula.txt`
+
+**Step 2 — Install with SwiftOnSecurity config:**
+
+Open PowerShell as Administrator and run:
+
+```powershell
+cd C:\Tools\Sysmon
+.\Sysmon64.exe -accepteula -i C:\Tools\sysmonconfig.xml
+```
+
+| Flag            | Purpose                                       |
+| --------------- | --------------------------------------------- |
+| `-accepteula`   | Accepts license agreement automatically       |
+| `-i`            | Install with the specified configuration file |
+| `sysmonconfig.xml` | SwiftOnSecurity's detection rules          |
+
+Expected output:
+
+```
+Sysmon64 installed.
+SysmonDrv installed.
+```
+
+**Step 3 — Verify installation:**
+
+```powershell
+Get-Service Sysmon64
+```
+
+Expected: `Status = Running`
+
+---
+
+## 11.5 Configure Wazuh to Monitor Sysmon Logs
+
+Tell the Wazuh agent to collect Sysmon events.
+
+**Step 1 — Edit Wazuh agent configuration:**
+
+```powershell
+notepad "C:\Program Files (x86)\ossec-agent\ossec.conf"
+```
+
+**Step 2 — Add Sysmon log collection:**
+
+Find the `<localfile>` section and add this block:
+
+```xml
+<localfile>
+  <location>Microsoft-Windows-Sysmon/Operational</location>
+  <log_format>eventchannel</log_format>
+</localfile>
+```
+
+Save and close Notepad.
+
+**Step 3 — Restart Wazuh agent:**
+
+```powershell
+Restart-Service WazuhSvc
+```
+
+---
+
+## 11.6 Test Sysmon Logging
+
+**Generate a test event:**
+
+1. Open PowerShell and run `notepad.exe`, then close it
+2. Open **Event Viewer:** `eventvwr.msc`
+3. Navigate to:
+   `Applications and Services Logs → Microsoft → Windows → Sysmon → Operational`
+4. You should see **Event ID 1** *(Process Create)* for `notepad.exe`
+
+**Verify events are reaching Wazuh Manager:**
+
+```bash
+sudo tail -f /var/ossec/logs/alerts/alerts.json | grep -i sysmon
+```
+
+> ✅ If you see Sysmon events in the output, the full pipeline — **DC01 → Wazuh Agent → Wazuh Manager** — is working correctly.
+
+# 12. Verification & Testing
+
+## 12.1 Verify Active Directory Services
+
+Run these PowerShell commands to verify all AD services are running:
+
+```powershell
+Get-Service ADWS    | Select Name, Status
+Get-Service DNS     | Select Name, Status
+Get-Service NTDS    | Select Name, Status
+Get-Service KDC     | Select Name, Status
+Get-Service Netlogon | Select Name, Status
+```
+
+All should show `Status: Running`.
+
+| Service    | Role                                  |
+| ---------- | ------------------------------------- |
+| `ADWS`     | Active Directory Web Services         |
+| `DNS`      | Domain Name System                    |
+| `NTDS`     | AD Domain Services (core database)    |
+| `KDC`      | Kerberos Key Distribution Center      |
+| `Netlogon` | Domain authentication and replication |
+
+---
+
+## 12.2 Test Domain Authentication
+
+1. Press **Windows + L** to lock the screen
+2. Click **Other user**
+3. Enter credentials:
+
+   | Field    | Value             |
+   | -------- | ----------------- |
+   | Username | `LAB\jdoe`        |
+   | Password | `ComplexPass123!` |
+
+4. Login should succeed
+
+---
+
+## 12.3 Verify DNS Resolution
+
+```powershell
+nslookup lab.local
+nslookup DC01.lab.local
+nslookup _ldap._tcp.lab.local    # Service record test
+```
+
+All three should resolve to `192.168.20.10`.
+
+---
+
+## 12.4 Verify Group Policy Application
+
+```powershell
+gpresult /R
+```
+
+This shows which GPOs are applied to the computer and current user.
+
+---
+
+## 12.5 Check Wazuh Alerts
+
+On the Wazuh Manager (`192.168.3.81`):
+
+**Verify DC01 is active:**
+
+```bash
+sudo /var/ossec/bin/agent_control -lc
+```
+
+`DC01` should show as **Active**.
+
+**Check recent events from DC01:**
+
+```bash
+sudo tail -100 /var/ossec/logs/alerts/alerts.json | grep DC01
+```
+
+> ✅ If you see recent events, the Domain Controller is successfully sending logs to Wazuh.
+
+---
+
+# 13. Security Hardening
+
+## 13.1 Disable Unnecessary Services
+
+While this is a lab, practicing security hardening is valuable:
+
+| Service          | Safe to Disable? | Reason                                        |
+| ---------------- | ---------------- | --------------------------------------------- |
+| Print Spooler    | ✅ Yes *(lab only)* | Common attack vector *(PrintNightmare)*    |
+| Windows Update   | ❌ No            | Keep enabled for security patches             |
+| Remote Registry  | ✅ Yes           | Rarely needed, reduces attack surface         |
+| Server service   | ❌ No            | Required for file sharing and AD              |
+
+To disable a service:
+
+```powershell
+Stop-Service "Spooler"
+Set-Service "Spooler" -StartupType Disabled
+```
+
+---
+
+## 13.2 Enable Windows Firewall Logging
+
+Log dropped connections for later analysis:
+
+```powershell
+Set-NetFirewallProfile -Profile Domain,Public,Private -LogBlocked True
+```
+
+Logs are saved to:
+
+```
+C:\Windows\System32\LogFiles\Firewall\pfirewall.log
+```
+
+---
+
+## 13.3 Disable SMBv1
+
+SMBv1 is vulnerable to critical exploits *(WannaCry, NotPetya)*. Disable it:
+
+```powershell
+Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol
+```
+
+---
+
+## 13.4 Enable Protected Users Group
+
+Add high-value accounts (like `labadmin`) to the **Protected Users** group. This prevents NTLM authentication and credential caching — making Pass-the-Hash attacks significantly harder.
+
+1. Open **Active Directory Users and Computers**
+2. Navigate to the **Builtin** container
+3. Double-click **Protected Users** group → **Members** tab → **Add**
+4. Type `labadmin` → **Check Names** → **OK** → **OK**
+
+---
+
+## 13.5 Disable NAT Adapter *(Post-Setup)*
+
+After all installations and updates are complete, disable Adapter 2 (NAT) so the Domain Controller only has internal network connectivity.
+
+1. Shut down the `DC01` VM
+2. Go to **VirtualBox → DC01 → Settings → Network → Adapter 2**
+3. Uncheck **"Enable Network Adapter"**
+4. Click **OK**
+5. Start the `DC01` VM
+
+---
+
+# 14. Common Troubleshooting
+
+## 14.1 Domain Controller Won't Promote
+
+**Problem:** Prerequisites check fails during DC promotion
+
+| Cause                         | Fix                                              |
+| ----------------------------- | ------------------------------------------------ |
+| Static IP not configured      | Set static IP before starting promotion          |
+| DNS pointing to external server | Change DNS to `127.0.0.1`                      |
+| Computer name is still default | Rename server to `DC01` before promotion        |
+| Firewall blocking ports       | Temporarily disable Windows Firewall during setup|
+
+---
+
+## 14.2 DNS Not Working
+
+**Problem:** Cannot resolve `lab.local` or `DC01.lab.local`
+
+```powershell
+Get-Service DNS                  # Verify DNS is running
+Restart-Service DNS              # Restart if needed
+ipconfig /flushdns               # Clear DNS cache
+```
+
+Additional checks:
+- Confirm the DNS server address in adapter settings is `127.0.0.1`
+- Verify DNS zones exist: **Server Manager → Tools → DNS → Forward Lookup Zones**
+
+---
+
+## 14.3 Users Cannot Log In
+
+**Problem:** Domain users get *"Username or password incorrect"* error
+
+```powershell
+Get-ADUser -Identity jdoe                        # Verify user exists
+Get-ADUser jdoe | Select Enabled                 # Check account is enabled
+Get-ADUser jdoe -Properties LockedOut            # Check for lockout
+```
+
+Additional checks:
+- Use the full domain prefix: `LAB\username` *(not just `username`)*
+- Verify the NetBIOS name: **Server Manager → Local Server → Computer Name**
+- Test with the built-in Administrator first: `LAB\Administrator`
+
+---
+
+## 14.4 Wazuh Agent Not Connecting
+
+**Problem:** DC01 shows as *"Never connected"* or *"Disconnected"* in Wazuh
+
+```powershell
+Get-Service WazuhSvc                                          # Check service status
+Test-NetConnection 192.168.3.81 -Port 1514                    # Test connectivity
+notepad "C:\Program Files (x86)\ossec-agent\ossec.conf"       # Verify IP in config
+```
+
+If the above looks correct, re-register and restart:
+
+```powershell
+cd "C:\Program Files (x86)\ossec-agent"
+.\agent-auth.exe -m 192.168.3.81
+Restart-Service WazuhSvc
+```
+
+> Also check **pfSense firewall rules** — ensure `Server_Network → DMZ` traffic is allowed on port `1514`.
+
+---
+
+## 14.5 Sysmon Events Not Appearing in Wazuh
+
+**Problem:** Sysmon is installed but no events appear in Wazuh
+
+```powershell
+Get-Service Sysmon64    # Verify Sysmon is running
+eventvwr.msc            # Check Event Viewer: Microsoft-Windows-Sysmon/Operational
+```
+
+Checklist:
+
+- [ ] Sysmon service status shows `Running`
+- [ ] Event Viewer shows Sysmon events under `Microsoft-Windows-Sysmon/Operational`
+- [ ] `ossec.conf` contains the Sysmon `<localfile>` block *(see Section 11.5)*
+- [ ] Wazuh agent was restarted after the config change
+- [ ] Check Wazuh agent log for errors: `C:\Program Files (x86)\ossec-agent\ossec.log`
